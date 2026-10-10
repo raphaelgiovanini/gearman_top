@@ -1,0 +1,384 @@
+#!/usr/bin/perl -w
+
+################################################################################
+# gearman-top
+#
+# "top" for gearmand - watch queues and workers in real-time, and see at a
+# glance when a queue is actually in trouble.
+#
+# NOTES:
+#
+#   - Specify servers w/ --servers (multiple times or comma separated)
+#   - Specify default port w/ --port (defaults to 4730)
+#   - Specify sleep time w/ --sleep (default 2), or as a bare number
+#   - Specify color output w/ --color (default) or --nocolor
+#   - Show only functions matching a regex w/ --filter
+#   - Run a single time without clearing the screen, good for scripts and
+#     monitoring checks: --oneoff.  Exit code is 0 OK, 1 WARNING, 2 CRITICAL.
+#
+#   Thresholds live in %limit below.  Each metric has a warning (yellow) and
+#   a critical (red) level; the ALERTS panel explains what is wrong.  Rows are
+#   sorted worst first, so problems stay on screen even with hundreds of
+#   functions.
+#
+################################################################################
+
+use strict;
+use IO::Socket;
+use Time::HiRes qw(time sleep);
+use POSIX qw(strftime);
+use Getopt::Long;
+use Term::ANSIColor;
+
+my $version = "0.1";
+
+################################################################################
+# CONFIGURATION
+
+# [warning, critical]
+my %limit = (
+  waiting  => [100, 1000],   # jobs queued (not yet running) for one function
+  wait_age => [60, 300],     # seconds a function has had jobs waiting nonstop
+  latency  => [50, 250],     # ms for one 'status' round-trip
+);
+my $max_alerts = 8;          # alert lines shown before "... and N more"
+my $timeout    = 3;          # seconds to wait on a server before calling it DOWN
+
+my $usecolor = 1;
+my $sleep    = 2;
+my $oneoff   = 0;
+my $filter;
+my $default_port = 4730;
+my @default_servers = ('localhost:4730');
+
+# END CONFIGURATION
+################################################################################
+
+my @servers;
+GetOptions(
+  'servers=s' => \@servers,
+  'port=i'    => \$default_port,
+  'sleep=i'   => \$sleep,
+  'color!'    => \$usecolor,
+  'filter=s'  => \$filter,
+  'oneoff'    => \$oneoff,
+) or die "USAGE: gearman-top [--servers h:p,...] [--sleep N] [--filter REGEX] [--oneoff] [--nocolor]\n";
+$sleep = shift @ARGV if @ARGV && $ARGV[0] =~ /^\d+$/;
+$sleep = 1 if $sleep < 1;
+@servers = @servers ? split(/,/, join(',', @servers)) : @default_servers;
+@servers = map { /:\d+$/ ? $_ : "$_:$default_port" } @servers;
+$usecolor = 0 if $oneoff || !-t STDOUT;
+
+my @lvlname  = ('OK', 'WARNING', 'CRITICAL');
+my @lvlcolor = ('green', 'yellow', 'bold red');
+
+my (%sock, %srvversion, %state);
+
+$SIG{PIPE} = 'IGNORE';
+unless ($oneoff) {
+  print "\033[?1049h\033[?25l";                    # alternate screen, hide cursor
+  $SIG{INT} = $SIG{TERM} = sub { exit 0 };
+}
+END { print "\033[?25h\033[?1049l" unless $oneoff }
+
+if ($oneoff) {
+  poll();                                          # first sample, for the trend
+  sleep $sleep;
+  my ($frame, $status) = frame(poll());
+  print $frame;
+  exit $status;
+}
+
+while (1) {
+  my ($frame) = frame(poll());
+  print "\033[H\033[2J", $frame;
+  sleep $sleep;
+}
+
+################################################################################
+# poll: query every server and turn raw counts into rows with trend and age.
+# Returns (\@rows, \@down, \%latency).
+#
+sub poll {
+  my (@rows, @down, %lat);
+  my $now = time;
+
+  foreach my $srv (@servers) {
+    my $st = fetch($srv);
+    unless ($st) { push @down, $srv; next }
+    $lat{$srv} = $st->{_latency};
+
+    foreach my $func (sort keys %{ $st->{funcs} }) {
+      next if defined $filter && $func !~ /$filter/;
+      my ($total, $running, $workers) = @{ $st->{funcs}{$func} };
+      my $waiting = $total - $running;
+      $waiting = 0 if $waiting < 0;
+      my $s = $state{"$srv\t$func"} ||= {};
+
+      my $trend;
+      $trend = ($waiting - $s->{waiting}) / ($now - $s->{time}) if defined $s->{waiting} && $now > $s->{time};
+      if ($waiting) { $s->{since} ||= $now } else { delete $s->{since} }
+      $s->{peak} = $workers if !defined $s->{peak} || $workers > $s->{peak};
+      @$s{qw(waiting time)} = ($waiting, $now);
+
+      push @rows, {
+        srv => $srv, func => $func, workers => $workers, running => $running,
+        waiting => $waiting, trend => $trend, peak => $s->{peak},
+        age => $s->{since} ? $now - $s->{since} : 0,
+      };
+    }
+  }
+  return (\@rows, \@down, \%lat);
+}
+
+# fetch: one 'status' round-trip over a persistent connection, retried once so
+# a stale socket (e.g. after a gearmand restart) doesn't show up as DOWN.
+sub fetch {
+  my ($srv) = @_;
+  for (1 .. 2) {
+    my %funcs;
+    my $t0;
+    my $ok = eval {
+      local $SIG{ALRM} = sub { die "timeout\n" };
+      alarm $timeout;
+      unless ($sock{$srv}) {
+        $sock{$srv} = IO::Socket::INET->new(PeerAddr => $srv, Timeout => $timeout)
+          or die "connect\n";
+        $sock{$srv}->autoflush(1);
+        my $fh = $sock{$srv};
+        print $fh "version\n";
+        my $v = <$fh>;
+        $srvversion{$srv} = $1 if defined $v && $v =~ /^OK\s+(\S+)/;
+      }
+      my $fh = $sock{$srv};
+      $t0 = time;
+      print $fh "status\n" or die "write\n";
+      my $done;
+      while (defined(my $line = <$fh>)) {
+        $line =~ s/\r?\n$//;
+        if ($line eq '.') { $done = 1; last }
+        my ($func, @n) = split /\t/, $line;
+        $funcs{$func} = \@n if @n == 3;
+      }
+      die "eof\n" unless $done;
+      alarm 0;
+      1;
+    };
+    alarm 0;
+    return { funcs => \%funcs, _latency => (time - $t0) * 1000 } if $ok;
+    close $sock{$srv} if $sock{$srv};
+    delete $sock{$srv};
+  }
+  return;
+}
+
+################################################################################
+# check: the actual "do I have a problem?" logic for one function.
+# Returns ([level, message]...).
+#
+sub check {
+  my ($r) = @_;
+  my @a;
+  my ($w, $run, $wait, $peak) = @$r{qw(workers running waiting peak)};
+  my $rising = defined $r->{trend} && $r->{trend} > 0 ? sprintf(', rising %s/s', human_num($r->{trend})) : '';
+  my $for = $r->{age} ? ' for ' . human_time($r->{age}) : '';
+
+  if ($wait) {
+    my $lvl = max(level($wait, 'waiting'), level($r->{age}, 'wait_age'));
+    if (!$w) {
+      push @a, [2, "$wait jobs waiting$for and no workers - nothing will process them"];
+    } elsif ($run >= $w) {
+      push @a, [max($lvl, 1), "all $w workers busy, $wait waiting$for$rising - add workers"];
+    } elsif ($lvl) {
+      push @a, [$lvl, sprintf("%d waiting%s with %d idle workers%s - workers stuck or not grabbing",
+                              $wait, $for, $w - $run, $rising)];
+    }
+  }
+  if (!$w && $peak && !$wait) {
+    push @a, [2, "all workers gone (had $peak) - new jobs will pile up"];
+  } elsif ($w && $w < $peak) {
+    push @a, [1, sprintf("lost %d of %d workers", $peak - $w, $peak)];
+  }
+  return @a;
+}
+
+################################################################################
+# frame: render the screen, returns (text, worst alert level).
+#
+sub frame {
+  my ($rows, $down, $lat) = @_;
+  my @alerts;
+
+  push @alerts, [2, $_, "server unreachable (connect or 'status' failed within ${timeout}s)"] for @$down;
+  foreach my $srv (sort keys %$lat) {
+    if (my $l = level($lat->{$srv}, 'latency')) {
+      push @alerts, [$l, $srv, sprintf("'status' took %.0fms - gearmand overloaded or network slow", $lat->{$srv})];
+    }
+  }
+  my $multi = @servers > 1;
+  foreach my $r (@$rows) {
+    $r->{name} = $multi ? "$r->{func}\@$r->{srv}" : $r->{func};
+    $r->{level} = 0;
+    foreach my $a (check($r)) {
+      push @alerts, [$a->[0], $r->{name}, $a->[1]];
+      $r->{level} = max($r->{level}, $a->[0]);
+    }
+  }
+  my $status = max(0, map { $_->[0] } @alerts);
+
+  # Header.
+  my @o;
+  my $where = $multi
+    ? sprintf("%d/%d servers up", @servers - @$down, scalar @servers)
+    : $servers[0] . ($srvversion{$servers[0]} ? "  gearmand $srvversion{$servers[0]}" : '')
+                  . (defined $lat->{$servers[0]} ? sprintf("  %.1fms", $lat->{$servers[0]}) : '');
+  push @o, paint("gearman-top v$version", 'bold')
+         . strftime("  %Y-%m-%d %H:%M:%S", localtime)
+         . "  refresh ${sleep}s  $where  "
+         . paint(" $lvlname[$status] ", $status == 0 ? 'black on_green'
+                                      : $status == 1 ? 'black on_yellow' : 'bold white on_red')
+         . "\n\n";
+
+  # Cluster meter + totals.
+  my %t;
+  foreach my $r (@$rows) { $t{$_} += $r->{$_} for qw(workers running waiting) }
+  $t{$_} //= 0 for qw(workers running waiting);
+  my $trend = 0;
+  $trend += $_->{trend} // 0 for @$rows;
+  my $busy = $t{workers} ? 100 * $t{running} / $t{workers} : 0;
+  push @o, meter('Busy', $busy, "$t{running}/$t{workers}", $busy >= 100 && $t{waiting} ? 1 : 0)
+         . sprintf("   Functions %d  Workers %d  Running %d  ", scalar @$rows, $t{workers}, $t{running})
+         . paint(sprintf("Waiting %d", $t{waiting}), $t{waiting} ? 1 : undef)
+         . sprintf(" (%s%s/s)", $trend > 0 ? '+' : '', human_num($trend))
+         . (defined $filter ? "  filter /$filter/" : '')
+         . "\n\n";
+
+  # Alerts go above the table so a long queue list never pushes them off screen.
+  push @o, paint(sprintf("ALERTS (%d)", scalar @alerts), 'bold'), "\n";
+  my @sorted = sort { $b->[0] <=> $a->[0] || $a->[1] cmp $b->[1] } @alerts;
+  my $namew = max(8, map { length $_->[1] } @sorted);
+  $namew = 40 if $namew > 40;
+  my $shown = !$oneoff && @sorted > $max_alerts ? $max_alerts - 1 : @sorted;
+  foreach my $a (@sorted[0 .. $shown - 1]) {
+    push @o, paint(sprintf("  %-4s", $a->[0] == 2 ? 'CRIT' : 'WARN'), $a->[0])
+           . sprintf("  %-*s  %s\n", $namew, trunc($a->[1], $namew), $a->[2]);
+  }
+  push @o, sprintf("  ... and %d more\n", @sorted - $shown) if $shown < @sorted;
+  push @o, paint("  No problems detected.", 0), "\n" unless @alerts;
+  push @o, "\n";
+
+  # Queue table, worst first, then busiest.
+  my @r = sort { $b->{level} <=> $a->{level} || $b->{waiting} <=> $a->{waiting}
+              || $b->{running} <=> $a->{running} || $a->{name} cmp $b->{name} } @$rows;
+  my $fw = max(8, map { length $_->{name} } @r);
+  $fw = 40 if $fw > 40;
+  my $head = sprintf("%-*s %7s %7s %7s  %-17s %8s %7s", $fw, 'FUNCTION', 'WORKERS', 'RUNNING', 'WAITING', 'BUSY', 'TREND', 'AGE');
+  push @o, paint(sprintf("%-*s", length($head) + 1, $head), 'black on_green'), "\n";
+
+  # Fit the terminal: every line used so far plus table rows plus footer.
+  my $room = @r;
+  unless ($oneoff) {
+    my $used = (() = join('', @o) =~ /\n/g) + 2;
+    $room = term_lines() - $used;
+    $room = 1 if $room < 1;
+    $room = @r if $room >= @r;
+    $room-- if $room < @r;                         # leave a line for "... more"
+  }
+  push @o, map { row($_, $fw) . "\n" } @r[0 .. $room - 1];
+  push @o, paint(sprintf("  ... %d more idle functions (use --filter, or a taller terminal)", @r - $room), 'faint'), "\n"
+    if $room < @r;
+  push @o, "\n(ctrl-c to quit)\n" unless $oneoff;
+
+  return (join('', @o), $status);
+}
+
+sub row {
+  my ($r, $fw) = @_;
+  my $idle = !$r->{running} && !$r->{waiting};
+  my $pct = $r->{workers} ? 100 * $r->{running} / $r->{workers} : 0;
+  my $bar = minibar($pct, $r->{workers} && $r->{running} >= $r->{workers} && $r->{waiting} ? 1 : 0);
+  my $trend = !defined $r->{trend} ? '-'
+            : $r->{trend} == 0 ? '0'
+            : ($r->{trend} > 0 ? '+' : '') . human_num($r->{trend}) . '/s';
+  my $line = paint(sprintf("%-*s", $fw, trunc($r->{name}, $fw)), $r->{level} ? $r->{level} : $idle ? 'faint' : undef)
+    . cell(7, $r->{workers}, !$r->{workers} && ($r->{waiting} || $r->{peak}) ? 2 : $r->{workers} < $r->{peak} ? 1 : 0)
+    . cell(7, $r->{running}, 0, $idle)
+    . cell(7, $r->{waiting}, $r->{waiting} ? max(1, level($r->{waiting}, 'waiting')) : 0, $idle)
+    . '  ' . $bar
+    . cell(8, $trend, $r->{waiting} && defined $r->{trend} && $r->{trend} > 0 ? 1 : 0, $idle)
+    . cell(7, $r->{age} ? human_time($r->{age}) : '-', level($r->{age}, 'wait_age'), $idle);
+  return $line;
+}
+
+################################################################################
+# Display helpers.
+
+# level: 0 OK, 1 warning, 2 critical.
+sub level {
+  my ($v, $key) = @_;
+  return 0 unless defined $v;
+  my ($warn, $crit) = @{ $limit{$key} };
+  return $v >= $crit ? 2 : $v >= $warn ? 1 : 0;
+}
+
+sub max { my $m = shift; for (@_) { $m = $_ if $_ > $m } $m }
+
+# Pad first, then color, so escape codes don't break the column alignment.
+sub cell {
+  my ($w, $text, $lvl, $faint) = @_;
+  return ' ' . paint(sprintf("%*s", $w, $text), $lvl ? $lvl : $faint ? 'faint' : undef);
+}
+
+sub paint {
+  my ($text, $style) = @_;
+  return $text unless $usecolor && defined $style;
+  $style = $lvlcolor[$style] if $style =~ /^\d$/;
+  return color($style) . $text . color('reset');
+}
+
+# htop-style bar: Busy[|||||||        3/290]
+sub meter {
+  my ($label, $pct, $text, $lvl) = @_;
+  my $w = 30;
+  my $fill = int($w * ($pct > 100 ? 100 : $pct) / 100 + 0.5);
+  $fill = 1 if $pct > 0 && !$fill;
+  my $bar = ('|' x $fill) . (' ' x ($w - $fill));
+  substr($bar, $w - length($text), length($text), $text) if length($text) < $w;
+  return paint($label, 'cyan') . '['
+       . paint(substr($bar, 0, $fill), $lvl ? $lvl : 'green') . substr($bar, $fill) . ']';
+}
+
+# Per-row utilization: [|||||     ]  50%
+sub minibar {
+  my ($pct, $lvl) = @_;
+  my $w = 10;
+  my $fill = int($w * ($pct > 100 ? 100 : $pct) / 100 + 0.5);
+  $fill = 1 if $pct > 0 && !$fill;
+  return '[' . paint('|' x $fill, $lvl ? $lvl : 'green') . (' ' x ($w - $fill)) . ']'
+       . sprintf("%4.0f%%", $pct);
+}
+
+sub trunc { length($_[0]) > $_[1] ? substr($_[0], 0, $_[1] - 1) . '~' : $_[0] }
+
+sub term_lines {
+  my ($rows) = (`stty size </dev/tty 2>/dev/null` // '') =~ /^(\d+)/;
+  return $rows || $ENV{LINES} || 24;
+}
+
+sub human_num {
+  my ($v) = @_;
+  my $a = abs $v;
+  return sprintf('%.1f', $v) if $a < 10 && $a != int($a);
+  return sprintf('%.0f', $v) if $a < 10000;
+  return sprintf('%.1fk', $v / 1e3) if $a < 1e6;
+  return sprintf('%.1fM', $v / 1e6);
+}
+
+sub human_time {
+  my ($s) = @_;
+  return sprintf('%dd%dh', $s / 86400, $s % 86400 / 3600) if $s >= 86400;
+  return sprintf('%dh%dm', $s / 3600, $s % 3600 / 60) if $s >= 3600;
+  return sprintf('%dm%ds', $s / 60, $s % 60) if $s >= 60;
+  return sprintf('%ds', $s);
+}
+################################################################################
