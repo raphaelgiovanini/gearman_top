@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="939" height="412" viewBox="0 0 939 412" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="14">
+<rect width="939" height="412" rx="8" fill="#1e1e2e"/>
+<circle cx="20" cy="18" r="6" fill="#f38ba8"/>
+<circle cx="40" cy="18" r="6" fill="#f9e2af"/>
+<circle cx="60" cy="18" r="6" fill="#a6e3a1"/>
+<text x="469.5" y="22" fill="#6c7086" text-anchor="middle" font-size="12">gearman-top --filter &#x27;^Send&#x27;</text>
+<text x="16.0" y="36" fill="#cdd6f4" font-weight="bold" xml:space="preserve" textLength="134.4">gearman-top v0.1</text>
+<text x="150.4" y="36" fill="#cdd6f4" xml:space="preserve" textLength="655.2">  2026-10-25 14:06:44  refresh 2s  gearman-01:4730  gearmand 1.1.21  150.7ms  </text>
+<rect x="805.6" y="23" width="75.6" height="18" fill="#f9e2af"/>
+<text x="805.6" y="36" fill="#1e1e2e" xml:space="preserve" textLength="75.6"> WARNING </text>
+<text x="16.0" y="72" fill="#89dceb" xml:space="preserve" textLength="33.6">Busy</text>
+<text x="49.6" y="72" fill="#cdd6f4" xml:space="preserve" textLength="8.4">[</text>
+<text x="58.0" y="72" fill="#cdd6f4" xml:space="preserve" textLength="856.8">                         0/130]   Functions 9  Workers 130  Running 0  Waiting 0 (0/s)  filter /^Send/</text>
+<text x="16.0" y="108" fill="#cdd6f4" font-weight="bold" xml:space="preserve" textLength="84.0">ALERTS (2)</text>
+<text x="16.0" y="126" fill="#f9e2af" xml:space="preserve" textLength="50.4">  WARN</text>
+<text x="66.4" y="126" fill="#cdd6f4" xml:space="preserve" textLength="638.4">  gearman-01:4730  &#x27;status&#x27; took 151ms - gearmand overloaded or network slow</text>
+<text x="16.0" y="144" fill="#f9e2af" xml:space="preserve" textLength="50.4">  WARN</text>
+<text x="66.4" y="144" fill="#cdd6f4" xml:space="preserve" textLength="327.6">  SendManual       lost 1 of 20 workers</text>
+<rect x="16.0" y="167" width="638.4" height="18" fill="#a6e3a1"/>
+<text x="16.0" y="180" fill="#1e1e2e" xml:space="preserve" textLength="638.4">FUNCTION        WORKERS RUNNING WAITING  BUSY                 TREND     AGE </text>
+<text x="16.0" y="198" fill="#f9e2af" xml:space="preserve" textLength="126.0">SendManual     </text>
+<text x="150.4" y="198" fill="#f9e2af" xml:space="preserve" textLength="58.8">     19</text>
+<text x="217.6" y="198" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="198" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="198" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="198" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="198" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="198" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="216" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendEmail_ses  </text>
+<text x="142.0" y="216" fill="#cdd6f4" xml:space="preserve" textLength="75.6">      20 </text>
+<text x="217.6" y="216" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="216" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="216" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="216" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="216" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="216" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="234" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendEmail_smtp </text>
+<text x="142.0" y="234" fill="#cdd6f4" xml:space="preserve" textLength="75.6">      20 </text>
+<text x="217.6" y="234" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="234" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="234" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="234" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="234" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="234" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="252" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendMessenger  </text>
+<text x="142.0" y="252" fill="#cdd6f4" xml:space="preserve" textLength="75.6">       1 </text>
+<text x="217.6" y="252" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="252" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="252" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="252" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="252" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="252" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="270" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendPartnerAPI </text>
+<text x="142.0" y="270" fill="#cdd6f4" xml:space="preserve" textLength="75.6">       1 </text>
+<text x="217.6" y="270" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="270" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="270" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="270" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="270" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="270" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="288" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendPushGateway</text>
+<text x="142.0" y="288" fill="#cdd6f4" xml:space="preserve" textLength="75.6">       1 </text>
+<text x="217.6" y="288" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="288" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="288" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="288" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="288" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="288" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="306" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendSMS        </text>
+<text x="142.0" y="306" fill="#cdd6f4" xml:space="preserve" textLength="75.6">       6 </text>
+<text x="217.6" y="306" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="306" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="306" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="306" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="306" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="306" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="324" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendWebPush    </text>
+<text x="142.0" y="324" fill="#cdd6f4" xml:space="preserve" textLength="75.6">       2 </text>
+<text x="217.6" y="324" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="324" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="324" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="324" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="324" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="324" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="342" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="126.0">SendWhatsApp   </text>
+<text x="142.0" y="342" fill="#cdd6f4" xml:space="preserve" textLength="75.6">      60 </text>
+<text x="217.6" y="342" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="284.8" y="342" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      0</text>
+<text x="343.6" y="342" fill="#cdd6f4" xml:space="preserve" textLength="25.2">  [</text>
+<text x="368.8" y="342" fill="#cdd6f4" xml:space="preserve" textLength="142.8">          ]   0% </text>
+<text x="511.6" y="342" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="67.2">       0</text>
+<text x="587.2" y="342" fill="#cdd6f4" opacity="0.45" xml:space="preserve" textLength="58.8">      -</text>
+<text x="16.0" y="378" fill="#cdd6f4" xml:space="preserve" textLength="302.4">(/ search, esc clear filter, q quit)</text>
+</svg>
