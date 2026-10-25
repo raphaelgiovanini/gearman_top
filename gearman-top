@@ -12,7 +12,8 @@
 #   - Specify default port w/ --port (defaults to 4730)
 #   - Specify sleep time w/ --sleep (default 2), or as a bare number
 #   - Specify color output w/ --color (default) or --nocolor
-#   - Show only functions matching a regex w/ --filter
+#   - Show only functions matching a regex w/ --filter, or live: press / and
+#     type (Enter keeps it, Esc clears it), q quits
 #   - Run a single time without clearing the screen, good for scripts and
 #     monitoring checks: --oneoff.  Exit code is 0 OK, 1 WARNING, 2 CRITICAL.
 #
@@ -26,7 +27,8 @@
 use strict;
 use IO::Socket;
 use Time::HiRes qw(time sleep);
-use POSIX qw(strftime);
+use POSIX qw(strftime :termios_h);
+use IO::Select;
 use Getopt::Long;
 use Term::ANSIColor;
 
@@ -54,6 +56,16 @@ my @default_servers = ('localhost:4730');
 # END CONFIGURATION
 ################################################################################
 
+my $usage = <<'EOF';
+USAGE: gearman-top [--servers h:p,...] [--port N] [--sleep N] [--filter REGEX] [--oneoff] [--nocolor]
+
+EXAMPLES:
+  gearman-top --servers localhost:4730
+  gearman-top --servers gm1,gm2:4731 --sleep 5 --filter '^email_'
+  gearman-top --servers localhost --oneoff      # exit 0 OK, 1 WARNING, 2 CRITICAL
+EOF
+print $usage and exit 0 unless @ARGV;
+
 my @servers;
 GetOptions(
   'servers=s' => \@servers,
@@ -62,7 +74,7 @@ GetOptions(
   'color!'    => \$usecolor,
   'filter=s'  => \$filter,
   'oneoff'    => \$oneoff,
-) or die "USAGE: gearman-top [--servers h:p,...] [--sleep N] [--filter REGEX] [--oneoff] [--nocolor]\n";
+) or die $usage;
 $sleep = shift @ARGV if @ARGV && $ARGV[0] =~ /^\d+$/;
 $sleep = 1 if $sleep < 1;
 @servers = @servers ? split(/,/, join(',', @servers)) : @default_servers;
@@ -73,13 +85,29 @@ my @lvlname  = ('OK', 'WARNING', 'CRITICAL');
 my @lvlcolor = ('green', 'yellow', 'bold red');
 
 my (%sock, %srvversion, %state);
+my ($term, $oterm, $search);                       # $search: text being typed after '/'
+my $sel = IO::Select->new(\*STDIN);
 
 $SIG{PIPE} = 'IGNORE';
+my $altscreen = 0;
 unless ($oneoff) {
   print "\033[?1049h\033[?25l";                    # alternate screen, hide cursor
+  $altscreen = 1;
   $SIG{INT} = $SIG{TERM} = sub { exit 0 };
+  if (-t STDIN) {                                  # keys without Enter, no echo
+    $term = POSIX::Termios->new;
+    $term->getattr(0);
+    $oterm = $term->getlflag;
+    $term->setlflag($oterm & ~(ECHO | ICANON));
+    $term->setcc(VMIN, 1);
+    $term->setcc(VTIME, 0);
+    $term->setattr(0, TCSANOW);
+  }
 }
-END { print "\033[?25h\033[?1049l" unless $oneoff }
+END {
+  if ($term) { $term->setlflag($oterm); $term->setattr(0, TCSANOW) }
+  print "\033[?25h\033[?1049l" if $altscreen;
+}
 
 if ($oneoff) {
   poll();                                          # first sample, for the trend
@@ -90,9 +118,34 @@ if ($oneoff) {
 }
 
 while (1) {
-  my ($frame) = frame(poll());
-  print "\033[H\033[2J", $frame;
-  sleep $sleep;
+  my @sample = poll();
+  my $due = time + $sleep;
+  do { print "\033[H\033[2J", (frame(@sample))[0] } while keypress($due - time);
+}
+
+# keypress: wait up to $wait seconds for a key.  Returns true when the screen
+# should be redrawn from the same sample, false when the next poll is due.
+sub keypress {
+  my $wait = shift;
+  return 0 if $wait <= 0;
+  unless ($term) { sleep $wait; return 0 }
+  return 0 unless $sel->can_read($wait);
+  sysread(STDIN, my $c, 1) or exit 0;
+
+  if (!defined $search) {
+    if    ($c eq '/')  { $search = '' }
+    elsif ($c eq 'q')  { exit 0 }
+    elsif ($c eq "\e") { undef $filter }
+  }
+  elsif ($c eq "\n" || $c eq "\r")    { undef $search }
+  elsif ($c eq "\e")                  { undef $search; undef $filter }
+  elsif ($c eq "\x7f" || $c eq "\b")  { chop $search }
+  elsif ($c =~ /^[[:print:]]$/)       { $search .= $c }
+
+  # Live filter while typing; a half-typed or invalid regex matches literally.
+  $filter = !length $search ? undef : eval { qr/$search/ } ? $search : quotemeta $search
+    if defined $search;
+  return 1;
 }
 
 ################################################################################
@@ -109,7 +162,6 @@ sub poll {
     $lat{$srv} = $st->{_latency};
 
     foreach my $func (sort keys %{ $st->{funcs} }) {
-      next if defined $filter && $func !~ /$filter/;
       my ($total, $running, $workers) = @{ $st->{funcs}{$func} };
       my $waiting = $total - $running;
       $waiting = 0 if $waiting < 0;
@@ -208,6 +260,7 @@ sub check {
 sub frame {
   my ($rows, $down, $lat) = @_;
   my @alerts;
+  $rows = [grep { $_->{func} =~ /$filter/ } @$rows] if defined $filter;
 
   push @alerts, [2, $_, "server unreachable (connect or 'status' failed within ${timeout}s)"] for @$down;
   foreach my $srv (sort keys %$lat) {
@@ -285,9 +338,10 @@ sub frame {
     $room-- if $room < @r;                         # leave a line for "... more"
   }
   push @o, map { row($_, $fw) . "\n" } @r[0 .. $room - 1];
-  push @o, paint(sprintf("  ... %d more idle functions (use --filter, or a taller terminal)", @r - $room), 'faint'), "\n"
+  push @o, paint(sprintf("  ... %d more idle functions (press / to search, or use a taller terminal)", @r - $room), 'faint'), "\n"
     if $room < @r;
-  push @o, "\n(ctrl-c to quit)\n" unless $oneoff;
+  push @o, "\n", (defined $search ? "/$search\033[7m \033[0m  (enter keep, esc clear)" : "(/ search, esc clear filter, q quit)"), "\n"
+    unless $oneoff;
 
   return (join('', @o), $status);
 }
